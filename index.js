@@ -1,3 +1,4 @@
+require('dotenv').config()
 const cors = require('cors')
 const express = require('express');
 const app = express()
@@ -153,4 +154,4 @@ app.get('/itens', async (req, res) => {
     });
 });
 
-app.listen(6008, () => console.log(`Baboo Rodando na Porta ${6008}`))
+app.listen(process.env.PORT, () => console.log(`Baboo Rodando na Porta ${process.env.PORT}`))
