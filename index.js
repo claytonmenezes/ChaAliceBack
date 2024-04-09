@@ -1,29 +1,12 @@
+const postgres = require('postgres')
 require('dotenv').config()
 const cors = require('cors')
-const express = require('express');
+const express = require('express')
 const app = express()
 app.use(express.json())
 app.use(cors())
 
-const sqlite3 = require('sqlite3').verbose();
-
-const db = new sqlite3.Database('./nomes.db');
-
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS itens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        grupo TEXT,
-        item TEXT,
-        selecionado BOOLEAN,
-        nome TEXT,
-        qtde INTEGER
-    )`);
-    db.run(`CREATE TABLE IF NOT EXISTS pessoa (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT,
-        itemId INTEGER
-    )`);
-});
+const db = postgres('postgres://postgres.tetineicatwlrfnmgdgq:ZznWw6PNnRudyrE9@aws-0-sa-east-1.pooler.supabase.com:5432/postgres')
 
 const itens = [
     {grupo: 'Fraldas', item: 'Fralda M', selecionado: false, nome: '', qtde: 1000000},
@@ -112,67 +95,67 @@ const itens = [
     {grupo: 'Outros', item: 'Assento para banheira', selecionado: false, nome: '', qtde: 1}
 ]
 
-db.serialize(() => {
-    let sql = 'INSERT INTO itens (grupo, item, selecionado, qtde)'
-    db.run('BEGIN TRANSACTION');
-    for (const item of itens) {
-        sql += `
-        select '${item.grupo}', '${item.item}', ${item.selecionado}, ${item.qtde}
-        where not exists (
-            select 3
-            from itens
-            where item = '${item.item}'
-        )
-        union all`
-    }
-    sql = sql.substring(0, sql.length - 9)
-    db.run(sql);
-    db.run('COMMIT');
-});
+const agruparItens = (array, chave) => {
+    return array.reduce((agrupado, item) => {
+        const valorChave = item[chave]
+        agrupado[valorChave] = agrupado[valorChave] || { nome: valorChave, itens: [] }
+        agrupado[valorChave].itens.push(item)
+        return agrupado
+    }, {})
+}
 
-app.put('/itens', (req, res) => {
+const start = async () => {
+    await db`CREATE TABLE IF NOT EXISTS itens (
+        id SERIAL PRIMARY KEY,
+        grupo TEXT,
+        item TEXT,
+        selecionado BOOLEAN,
+        nome TEXT,
+        qtde INTEGER,
+        data DATE
+    )`
+    await db`CREATE TABLE IF NOT EXISTS pessoa (
+        id SERIAL PRIMARY KEY,
+        nome TEXT,
+        itemId INTEGER,
+        data DATE
+    )`
+    // let sql = 'INSERT INTO itens (grupo, item, selecionado, qtde, data)'
+    // for (const [index, item] of itens.entries()) {
+    //     sql += `
+    //     select '${item.grupo}', '${item.item}', ${item.selecionado}, ${item.qtde}, '${new Date((new Date().setDate(index))).toISOString()}'
+    //     where not exists (
+    //         select 3
+    //         from itens
+    //         where item = '${item.item}'
+    //     )
+    //     union all`
+    // }
+    // sql = sql.substring(0, sql.length - 9)
+    // console.log(sql)
+}
+
+start()
+
+app.put('/itens', async (req, res) => {
     const { itensSelecionados } = req.body
-    db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-        for (const selecionado of itensSelecionados) {
-            db.run('update itens set qtde = ? where id = ?', [(selecionado.qtde - 1), selecionado.id]);
-            db.run('insert into pessoa(nome, itemId) values(?, ?)', [selecionado.nome, selecionado.id]);
-        }
-        db.run('COMMIT');
-    });
-
+    for (const selecionado of itensSelecionados) {
+        await db`update itens set qtde = ${(selecionado.qtde - 1)} where id = ${selecionado.id}`
+        await db`insert into pessoa(nome, itemId, data) values(${selecionado.nome}, ${selecionado.id}, ${new Date().toISOString()}::DATE)`
+    }
     res.status(200).send('Lista de itens gravada com sucesso!');
 });
 
 app.get('/itens', async (req, res) => {
-    db.all('SELECT * FROM itens', (err, rows) => {
-        if (err) {
-            res.status(500).send('Erro ao obter lista de itens')
-            return
-        }
-        res.status(200).json(rows)
-    });
+    const rows = await db`SELECT * FROM itens order by data`
+    res.status(200).json(rows)
 });
 
 app.get('/pessoas', async (req, res) => {
-    db.all('SELECT p.nome, i.item presente FROM pessoa p join itens i on p.itemId = i.id', (err, rows) => {
-        if (err) {
-            res.status(500).send('Erro ao obter lista de itens')
-            return
-        }
-        const result = agruparItens(rows, 'nome')
-        console.log(result)
-        res.status(200).json(result)
-    });
+    await db`SELECT p.nome, i.item presente FROM pessoa p join itens i on p.itemId = i.id order by data`
+    const result = agruparItens(rows, 'nome')
+    console.log(result)
+    res.status(200).json(result)
 });
 
 app.listen(process.env.PORT, () => console.log(`Baboo Rodando na Porta ${process.env.PORT}`))
-
-function agruparItens(array, chave) {
-    return array.reduce((agrupado, item) => {
-        const valorChave = item[chave];
-        agrupado[valorChave] = agrupado[valorChave] || { nome: valorChave, itens: [] };
-        agrupado[valorChave].itens.push(item);
-        return agrupado;
-    }, {});
-}
