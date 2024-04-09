@@ -154,4 +154,25 @@ app.get('/itens', async (req, res) => {
     });
 });
 
+app.get('/pessoas', async (req, res) => {
+    db.all('SELECT p.nome, i.item presente FROM pessoa p join itens i on p.itemId = i.id', (err, rows) => {
+        if (err) {
+            res.status(500).send('Erro ao obter lista de itens')
+            return
+        }
+        const result = agruparItens(rows, 'nome')
+        console.log(result)
+        res.status(200).json(result)
+    });
+});
+
 app.listen(process.env.PORT, () => console.log(`Baboo Rodando na Porta ${process.env.PORT}`))
+
+function agruparItens(array, chave) {
+    return array.reduce((agrupado, item) => {
+        const valorChave = item[chave];
+        agrupado[valorChave] = agrupado[valorChave] || { nome: valorChave, itens: [] };
+        agrupado[valorChave].itens.push(item);
+        return agrupado;
+    }, {});
+}
