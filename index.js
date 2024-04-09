@@ -152,7 +152,7 @@ app.get('/itens', async (req, res) => {
 });
 
 app.get('/pessoas', async (req, res) => {
-    await db`SELECT p.nome, i.item presente FROM pessoa p join itens i on p.itemId = i.id order by data`
+    await db`SELECT p.nome, i.item presente FROM pessoa p join itens i on p.itemId = i.id order by p.data`
     const result = agruparItens(rows, 'nome')
     console.log(result)
     res.status(200).json(result)
